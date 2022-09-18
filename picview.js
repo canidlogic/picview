@@ -144,17 +144,127 @@ function PicView(ce, bgcolor) {
     "ovy": 0
   };
   
-  // Register pointer event handlers
+  // Register touch event handlers
+  this._canvas.addEventListener('touchstart', function(ev) {
+    var i;
+    
+    // Indicate we are handling this event
+    ev.preventDefault();
+    
+    // Run each changed touch through the handler
+    for(i = 0; i < ev.changedTouches.length; i++) {
+      selfref._handleTouchDown(ev.changedTouches.item(i), ev.timeStamp);
+    }
+  });
+  
+  this._canvas.addEventListener('touchmove', function(ev) {
+    var i;
+    
+    // Indicate we are handling this event
+    ev.preventDefault();
+    
+    // Run each changed touch through the handler
+    for(i = 0; i < ev.changedTouches.length; i++) {
+      selfref._handleTouchMove(ev.changedTouches.item(i));
+    }
+  });
+  
+  this._canvas.addEventListener('touchend', function(ev) {
+    var i;
+    
+    // Indicate we are handling this event
+    ev.preventDefault();
+    
+    // Run each changed touch through the handler
+    for(i = 0; i < ev.changedTouches.length; i++) {
+      selfref._handleTouchUp(ev.changedTouches.item(i), ev.timeStamp);
+    }
+  });
+  
+  this._canvas.addEventListener('touchcancel', function(ev) {
+    var i;
+    
+    // Indicate we are handling this event
+    ev.preventDefault();
+    
+    // Run each changed touch through the handler
+    for(i = 0; i < ev.changedTouches.length; i++) {
+      selfref._handleTouchUp(ev.changedTouches.item(i), ev.timeStamp);
+    }
+  });
+  
+  // Register mouse event handlers and simulate them as if they were
+  // touch events
   this._canvas.addEventListener('pointerdown', function(ev) {
-    selfref._handlePointerDown(ev);
+    // Ignore if not primary pointer
+    if (!ev.isPrimary) {
+      return;
+    }
+    
+    // Ignore if not for a mouse
+    if (ev.pointerType !== "mouse") {
+      return;
+    }
+    
+    // Indicate we are handling this event
+    ev.preventDefault();
+    
+    // Capture mouse
+    selfref._canvas.setPointerCapture(ev.pointerId);
+    
+    // Call through to touch handler with simulated structure
+    selfref._handleTouchDown({
+      "identifier": "mouse",
+      "clientX": ev.clientX,
+      "clientY": ev.clientY
+    }, ev.timeStamp);
   });
   
   this._canvas.addEventListener('pointermove', function(ev) {
-    selfref._handlePointerMove(ev);
+    // Ignore if not primary pointer
+    if (!ev.isPrimary) {
+      return;
+    }
+    
+    // Ignore if not for a mouse
+    if (ev.pointerType !== "mouse") {
+      return;
+    }
+    
+    // Indicate we are handling this event
+    ev.preventDefault();
+    
+    // Call through to touch handler with simulated structure
+    selfref._handleTouchMove({
+      "identifier": "mouse",
+      "clientX": ev.clientX,
+      "clientY": ev.clientY
+    });
   });
   
   this._canvas.addEventListener('pointerup', function(ev) {
-    selfref._handlePointerUp(ev);
+    // Ignore if not primary pointer
+    if (!ev.isPrimary) {
+      return;
+    }
+    
+    // Ignore if not for a mouse
+    if (ev.pointerType !== "mouse") {
+      return;
+    }
+    
+    // Indicate we are handling this event
+    ev.preventDefault();
+    
+    // Release mouse
+    selfref._canvas.releasePointerCapture(ev.pointerId);
+    
+    // Call through to touch handler with simulated structure
+    selfref._handleTouchUp({
+      "identifier": "mouse",
+      "clientX": ev.clientX,
+      "clientY": ev.clientY
+    }, ev.timeStamp);
   });
   
   // Get a 2D drawing context and store it in _ctx; for efficiency, we
@@ -191,6 +301,44 @@ function PicView(ce, bgcolor) {
   // the _view property
   this._fullv = undefined;
   
+  // The _dragstate keeps track of the basic user interface state
+  // necessary for handling drag events; it has the following
+  // properties:
+  //
+  //   startx, starty - the X, Y coordinates in canvas space at the
+  //   start of the drag, or undefined if not in a drag
+  //
+  //   curx, cury - the most recently recorded X, Y, coordinates in
+  //   canvas space during a drag, or undefined if not in a drag
+  //
+  //   curd - the most recently recorded distance of secondary pointer
+  //   to primary pointer, or undefined if not in a double-mode drag
+  //   operation
+  //
+  //   action - only defined if in a drag that is in full mode; in this
+  //   case, it is a boolean flag indicating whether or not an action
+  //   event has been triggered
+  //
+  //   action_fence - the SQUARE of the distance the primary touch must
+  //   travel in full mode for an action to be activated
+  //
+  //   zoom_fence - when image is fully zoomed out, the primary touch
+  //   must stay within this SQUARE of the distance from the position
+  //   when first touched down in order for a zoom operation to actually
+  //   start when double mode is entered
+  //
+  this._dragstate = {
+    "startx": undefined,
+    "starty": undefined,
+    "curx": undefined,
+    "cury": undefined,
+    "curd": undefined,
+    "action": undefined,
+    
+    "action_fence": (200*200),
+    "zoom_fence": (50*50)
+  };
+  
   // Define the _ready flag, which is true if the _img element we are
   // about to define is ready to draw an image, false otherwise
   this._ready = false;
@@ -219,6 +367,32 @@ function PicView(ce, bgcolor) {
  * Private instance functions
  * ==========================
  */
+
+/*
+ * Check whether an image is loaded AND the current view is equivalent
+ * to the initial, full view.
+ * 
+ * Return:
+ * 
+ *   true if image loaded and current view is full view, false in all
+ *   other cases
+ */
+PicView.prototype._isFullView = function() {
+  // Check that image is loaded, false otherwise
+  if ((this._fullv === undefined) || (this._view === undefined)) {
+    return false;
+  }
+  
+  // Return true if current view equal to full view
+  if ((this._view.dx === this._fullv.dx) &&
+      (this._view.dy === this._fullv.dy) &&
+      (this._view.dw === this._fullv.dw) &&
+      (this._view.dh === this._fullv.dh)) {
+    return true;
+  } else {
+    return false;
+  }
+}
 
 /*
  * Given the width and height of an image, compute the _fullv property
@@ -394,13 +568,12 @@ PicView.prototype._handleImageLoad = function() {
 };
 
 /*
- * Given a mouse event (which pointer events are a subclass of), return
- * an array with the X and Y coordinates of the event within the canvas
- * coordinate space.
+ * Given a mouse event or a touch object, return an array with the X and
+ * Y coordinates of the event within the canvas coordinate space.
  * 
  * Parameters:
  * 
- *   ev - the mouse (or pointer) event
+ *   ev - the mouse event or touch object
  * 
  * Return:
  * 
@@ -473,8 +646,25 @@ PicView.prototype._inputOverlay = function(x, y) {
  *   y : number - the Y coordinate in canvas coordinate space
  */
 PicView.prototype._inputBegin = function(x, y) {
-  // @@TODO:
-  demo.logMessage("begin " + x + " " + y);
+  // Ignore if no image loaded
+  if (this._view === undefined) {
+    return;
+  }
+  
+  // Update drag state statistics
+  this._dragstate.startx = x;
+  this._dragstate.starty = y;
+  this._dragstate.curx = x;
+  this._dragstate.cury = y;
+  this._dragstate.curd = undefined;
+  
+  // If we are in full view, set action flag to false, otherwise set it
+  // to undefined
+  if (this._isFullView()) {
+    this._dragstate.action = false;
+  } else {
+    this._dragstate.action = undefined;
+  }
 };
 
 /*
@@ -485,8 +675,18 @@ PicView.prototype._inputBegin = function(x, y) {
  * never occurs when a drag event is in double mode.
  */
 PicView.prototype._inputEnd = function() {
-  // @@TODO:
-  demo.logMessage("end");
+  // Ignore if no image loaded
+  if (this._view === undefined) {
+    return;
+  }
+  
+  // Update drag state statistics
+  this._dragstate.startx = undefined;
+  this._dragstate.starty = undefined;
+  this._dragstate.curx = undefined;
+  this._dragstate.cury = undefined;
+  this._dragstate.curd = undefined;
+  this._dragstate.action = undefined;
 };
 
 /*
@@ -502,8 +702,41 @@ PicView.prototype._inputEnd = function() {
  *   from the primary pointer
  */
 PicView.prototype._inputDouble = function(d) {
-  // @@TODO:
-  demo.logMessage("double " + d);
+  var a, b, d;
+  
+  // Ignore if no image loaded
+  if (this._view === undefined) {
+    return;
+  }
+  
+  // Ignore if input state undefined
+  if (this._dragstate.startx === undefined) {
+    return;
+  }
+  
+  // Special handling if currently in full mode
+  if (this._dragstate.action !== undefined) {
+    // If we have already hit an action, then ignore this event
+    if (this._dragstate.action) {
+      return;
+    }
+    
+    // If we are outside the zoom fence, then ignore this event
+    a = this._dragstate.curx - this._dragstate.startx;
+    b = this._dragstate.cury - this._dragstate.starty;
+    d = (a * a) + (b * b);
+    if (d > this._dragstate.zoom_fence) {
+      return;
+    }
+    
+    // If we got here, then undefine the action flag so we are now in
+    // zoom mode and continue on
+    this._dragstate.action = undefined;
+  }
+  
+  // If we got here, we are in zoom mode, so just update the current
+  // distance
+  this._dragstate.curd = d;
 };
 
 /*
@@ -514,8 +747,13 @@ PicView.prototype._inputDouble = function(d) {
  * that drag operation is in double mode.
  */
 PicView.prototype._inputSingle = function() {
-  // @@TODO:
-  demo.logMessage("single");
+  // Ignore if no image loaded
+  if (this._view === undefined) {
+    return;
+  }
+  
+  // Clear current distance statistic to undefined
+  this._dragstate.curd = undefined;
 };
 
 /*
@@ -530,6 +768,48 @@ PicView.prototype._inputSingle = function() {
  *   y : number - the Y coordinate in canvas coordinate space
  */
 PicView.prototype._inputDrag = function(x, y) {
+  var a, b, d;
+  
+  // Ignore if no image loaded
+  if (this._view === undefined) {
+    return;
+  }
+  
+  // Ignore if input state undefined
+  if (this._dragstate.startx === undefined) {
+    return;
+  }
+  
+  // Special handling if in full mode
+  if (this._dragstate.action !== undefined) {
+    // Begin by updating current position
+    this._dragstate.curx = x;
+    this._dragstate.cury = y;
+    
+    // If action flag was already set, then no further processing
+    if (this._dragstate.action) {
+      return;
+    }
+    
+    // Compute square of distance from original touch-down
+    a = this._dragstate.curx - this._dragstate.startx;
+    b = this._dragstate.cury - this._dragstate.starty;
+    d = (a * a) + (b * b);
+    
+    // If distance has exceeded the action fence, then handle an action
+    if (d >= this._dragstate.action_fence) {
+      // Set the action flag
+      this._dragstate.action = true;
+      
+      // Invoke action handler
+      // @@TODO:
+      demo.logMessage("Action");
+    }
+    
+    // We are now finished in this case
+    return;
+  }
+  
   // @@TODO:
   demo.logMessage("drag " + x + " " + y);
 };
@@ -546,6 +826,16 @@ PicView.prototype._inputDrag = function(x, y) {
  *   from the primary pointer
  */
 PicView.prototype._inputZoom = function(d) {
+  // Ignore if no image loaded
+  if (this._view === undefined) {
+    return;
+  }
+  
+  // Ignore if input state undefined
+  if (this._dragstate.startx === undefined) {
+    return;
+  }
+  
   // @@TODO:
   demo.logMessage("zoom " + d);
 };
@@ -593,66 +883,54 @@ PicView.prototype._raiseIfHold = function(x, y, ts) {
 }
 
 /*
- * Private instance function handler of pointer-down events on the
- * canvas.
+ * Private instance function handler of individual touch objects
+ * received during touch-down events on the canvas.
+ * 
+ * You must also pass the timeStamp of the event that included this
+ * touch as the tstamp parameter.
  */
-PicView.prototype._handlePointerDown = function(ev) {
+PicView.prototype._handleTouchDown = function(tc, tstamp) {
   
   var primary, isOverlay, ca, a, b, d;
   
   // We first of all want to figure out whether this counts as a primary
   // pointer down or a secondary pointer down, or whether we should just
   // ignore this event
-  if (ev.isPrimary) {
-    // Event indicates this is a primary pointer, so always interpret it
-    // that way
+  if (this._ptr.active[0] === undefined) {
+    // Nothing is currently active, so treat this as primary
+    primary = true;
+  
+  } else if (this._ptr.active[0] === tc.identifier) {
+    // This touch matches the currently active primary touch, so treat
+    // this as primary
     primary = true;
     
-  } else {
-    // Event did not indicate that this is a primary pointer; if there
-    // is no active pointer down, then ignore this event
-    if (this._ptr.active[0] === undefined) {
-      return;
-    }
-    
-    // If we got here, there is a primary active pointer down; if the
-    // ID of that primary active pointer equals the ID of the pointer
-    // for this event, then this event is strange so ignore it
-    if (this._ptr.active[0] === ev.pointerId) {
-      return;
-    }
-    
-    // If there is already a secondary pointer, check that it is equal
-    // to this pointer ID, or else ignore this event
-    if (this._ptr.active[1] !== undefined) {
-      if (this._ptr.active[1] !== ev.pointerId) {
-        return;
-      }
-    }
-    
-    // If we got here, then we know that there is a primary pointer
-    // already down that is not equal to the pointer of this event, and
-    // that if there is already a secondary pointer down, it has the
-    // same pointer ID as this event; we know the pointer is secondary
-    // in this case
+  } else if (this._ptr.active[1] === undefined) {
+    // This touch doesn't match the currently active primary touch and
+    // no secondary touch is defined, so treat this as secondary
     primary = false;
+    
+  } else if (this._ptr.active[1] === tc.identifier) {
+    // This touch matches a currently active secondary touch, so treat
+    // this as secondary
+    primary = false;
+    
+  } else {
+    // In all other cases, this is beyond a secondary touch, so ignore
+    // it
+    return;
   }
   
-  // If we got here, then we are going to handle this event so prevent
-  // the default behavior
-  ev.preventDefault();
+  // Map the coordinates of this touch into canvas space
+  ca = this._mapPointerToCanvas(tc);
   
-  // Map the coordinates of this event into canvas space
-  ca = this._mapPointerToCanvas(ev);
-  
-  // Further handling depends on whether this a primary pointer press or
-  // a secondary pointer press
+  // Further handling depends on whether this a primary touch press or
+  // a secondary touch press
   if (primary) {
-    // Primary pointer press -- if we are currently in a drag operation
+    // Primary touch press -- if we are currently in a drag operation
     // that is in double mode, go back to single mode
     if (this._ptr.active[1] !== undefined) {
       this._inputSingle();
-      this._canvas.releasePointerCapture(this._ptr.active[1]);
       this._ptr.active[1] = undefined;
     }
     
@@ -660,8 +938,7 @@ PicView.prototype._handlePointerDown = function(ev) {
     // a drag operation, finish that drag operation
     if (this._ptr.active[0] !== undefined) {
       this._inputEnd();
-      this._raiseIfHold(this._ptr.bcxm, this._ptr.bcym, ev.timeStamp);
-      this._canvas.releasePointerCapture(this._ptr.active[0]);
+      this._raiseIfHold(this._ptr.bcxm, this._ptr.bcym, tstamp);
       this._ptr.active[0] = undefined;
       this._ptr.pcx = undefined;
       this._ptr.pcy = undefined;
@@ -758,7 +1035,7 @@ PicView.prototype._handlePointerDown = function(ev) {
       }
     }
     
-    // If we just determined that this primary pointer press occurs
+    // If we just determined that this primary pointer touch occurs
     // within an overlay area, then just handle an overlay event and
     // proceed no further
     if (isOverlay) {
@@ -766,33 +1043,29 @@ PicView.prototype._handlePointerDown = function(ev) {
       return;
     }
     
-    // If we got here, then we have a primary pointer press that is not
+    // If we got here, then we have a primary touch press that is not
     // in an overlay, and we've already made sure that there is no
     // longer any active drag operation; begin by setting up the state
     // for a drag operation
-    this._ptr.active[0] = ev.pointerId;
-    this._ptr.pcx = ev.clientX;
-    this._ptr.pcy = ev.clientY;
-    this._ptr.bcx = ev.clientX;
-    this._ptr.bcy = ev.clientY;
+    this._ptr.active[0] = tc.identifier;
+    this._ptr.pcx = tc.clientX;
+    this._ptr.pcy = tc.clientY;
+    this._ptr.bcx = tc.clientX;
+    this._ptr.bcy = tc.clientY;
     this._ptr.bcxm = ca[0];
     this._ptr.bcym = ca[1];
-    this._ptr.btime = ev.timeStamp;
+    this._ptr.btime = tstamp;
     this._ptr.bmaxd = 0.0;
     this._ptr.dbl = false;
-    
-    // Capture the primary pointer
-    this._canvas.setPointerCapture(ev.pointerId);
     
     // Finally, handle the beginning of the event
     this._inputBegin(ca[0], ca[1]);
     
   } else {
-    // Secondary pointer press -- if we are currently in a drag
+    // Secondary touch press -- if we are currently in a drag
     // operation that is in double mode, go back to single mode
     if (this._ptr.active[1] !== undefined) {
       this._inputSingle();
-      this._canvas.releasePointerCapture(this._ptr.active[1]);
       this._ptr.active[1] = undefined;
     }
     
@@ -800,17 +1073,15 @@ PicView.prototype._handlePointerDown = function(ev) {
     // that we are in a drag operation and there is no secondary pointer
     // active and that the current event's pointer does not match the
     // main pointer; set the dbl flag to indicate that this drag
-    // operation has gone into double mode at some point and then
-    // capture the secondary pointer and store this pointer ID as the
-    // active secondary pointer
+    // operation has gone into double mode at some point and then store
+    // this pointer ID as the active secondary pointer
     this._ptr.dbl = true;
-    this._ptr.active[1] = ev.pointerId;
-    this._canvas.setPointerCapture(ev.pointerId);
+    this._ptr.active[1] = tc.identifier;
     
     // Compute the SQUARE of the distance from (pcx, pcy) to the current
     // position of the secondary pointer
-    a = ev.clientX - this._ptr.pcx;
-    b = ev.clientY - this._ptr.pcy;
+    a = tc.clientX - this._ptr.pcx;
+    b = tc.clientY - this._ptr.pcy;
     d = (a * a) + (b * b);
     
     // Signal that we are entering double mode
@@ -819,26 +1090,26 @@ PicView.prototype._handlePointerDown = function(ev) {
 };
 
 /*
- * Private instance function handler of pointer-move events on the
- * canvas.
+ * Private instance function handler of touch objects received during
+ * touch-move events on the canvas.
  */
-PicView.prototype._handlePointerMove = function(ev) {
+PicView.prototype._handleTouchMove = function(tc) {
   var ca, a, b, d;
   
-  // Check whether the pointerId of the event matches a currently active
-  // primary pointer, a currently active secondary pointer, or neither,
-  // and handle differently in each case
-  if (ev.pointerId === this._ptr.active[0]) {
-    // Pointer matches the primary pointer, so first of all update the
+  // Check whether the identifier of the touch matches a currently
+  // active primary touch, a currently active secondary touch, or
+  // else ignore if it doesn't match either
+  if (tc.identifier === this._ptr.active[0]) {
+    // Touch matches the primary pointer, so first of all update the
     // pcx/pcy statistics
-    this._ptr.pcx = ev.clientX;
-    this._ptr.pcy = ev.clientY;
+    this._ptr.pcx = tc.clientX;
+    this._ptr.pcy = tc.clientY;
     
     // Next, compute the SQUARE of the distance between the current
-    // position of the primary pointer and its position when it was
-    // first pressed down
-    a = ev.clientX - this._ptr.bcx;
-    b = ev.clientY - this._ptr.bcy;
+    // position of the primary touch and its position when it was first
+    // pressed down
+    a = tc.clientX - this._ptr.bcx;
+    b = tc.clientY - this._ptr.bcy;
     d = (a * a) + (b * b);
     
     // Update the bmaxd statistic
@@ -848,89 +1119,65 @@ PicView.prototype._handlePointerMove = function(ev) {
     
     // We have now update internal state, so next step is to map the
     // current position into canvas coordinate space
-    ca = this._mapPointerToCanvas(ev);
-    
-    // Indicate we are handling this event ourselves
-    ev.preventDefault();
+    ca = this._mapPointerToCanvas(tc);
     
     // Finally, handle the drag event
     this._inputDrag(ca[0], ca[1]);
     
-  } else if (ev.pointerId === this._ptr.active[1]) {
-    // Pointer matches the secondary pointer, so compute the SQUARE of
-    // the distance between the current secondary pointer position and
-    // the most recent primary pointer position
-    a = ev.clientX - this._ptr.pcx;
-    b = ev.clientY - this._ptr.pcy;
+  } else if (tc.identifier === this._ptr.active[1]) {
+    // Touch matches the secondary touch, so compute the SQUARE of the
+    // distance between the current secondary pointer position and the
+    // most recent primary pointer position
+    a = tc.clientX - this._ptr.pcx;
+    b = tc.clientY - this._ptr.pcy;
     d = (a * a) + (b * b);
-    
-    // Indicate we are handling this event ourselves
-    ev.preventDefault();
     
     // Handle the zoom event
     this._inputZoom(d);
-    
-  } else {
-    // Pointer does not match any active pointer -- only do something if
-    // there are no active pointers AND this event is for the primary
-    // pointer, else ignore the event
-    if ((this._ptr.active[0] === undefined) && ev.isPrimary) {
-      // There are no active pointers and this event is for a primary
-      // pointer, so handle a hover event
-      ca = this._mapPointerToCanvas(ev);
-      ev.preventDefault();
-      this._inputHover(ca[0], ca[1]);
-    }
   }
 };
 
 /*
- * Private instance function handler of pointer-up events on the
- * canvas.
+ * Private instance function handler of touch objects received through
+ * touch-up or touch-cancel events on the canvas.  Also requires the
+ * timeStamp of the event.
  */
-PicView.prototype._handlePointerUp = function(ev) {
+PicView.prototype._handleTouchUp = function(tc, tstamp) {
   var releasePrimary, releaseSecondary;
   
-  // First of all, we want to handle any motion information in the
-  // release event, so call through to the move handler first
-  this._handlePointerMove(ev);
+  // First of all, we want to handle any motion information in the touch
+  // object, so call through to the move handler first
+  this._handleTouchMove(tc);
   
   // Start with the releasePrimary and releaseSecondary flags clear
   releasePrimary = false;
   releaseSecondary = false;
   
-  // If the pointer matches an active primary or secondary pointer, set
-  // the appropriate release flags
-  if (ev.pointerId === this._ptr.active[0]) {
-    // Pointer being released is primary, so release the primary and
+  // If the touch matches an active primary or secondary touch, set the
+  // appropriate release flags
+  if (tc.identifier === this._ptr.active[0]) {
+    // Touch being released is primary, so release the primary and
     // release the secondary if it is also active
     releasePrimary = true;
     if (this._ptr.active[1] !== undefined) {
       releaseSecondary = true;
     }
     
-  } else if (ev.pointerId === this._ptr.active[1]) {
-    // Pointer being released is secondary, so just release secondary
+  } else if (tc.identifier === this._ptr.active[1]) {
+    // Touch being released is secondary, so just release secondary
     releaseSecondary = true;
   }
   
-  // If we are doing any release, mark the event as handled
-  if (releasePrimary || releaseSecondary) {
-    ev.preventDefault();
-  }
-  
-  // If we need to release secondary pointer, handle that
+  // If we need to release secondary touch, handle that
   if (releaseSecondary) {
     this._inputSingle();
-    this._canvas.releasePointerCapture(this._ptr.active[1]);
     this._ptr.active[1] = undefined;
   }
   
-  // If we need to release primary pointer, handle that
+  // If we need to release primary touch, handle that
   if (releasePrimary) {
     this._inputEnd();
-    this._raiseIfHold(this._ptr.bcxm, this._ptr.bcym, ev.timeStamp);
-    this._canvas.releasePointerCapture(this._ptr.active[0]);
+    this._raiseIfHold(this._ptr.bcxm, this._ptr.bcym, tstamp);
     this._ptr.active[0] = undefined;
     this._ptr.pcx = undefined;
     this._ptr.pcy = undefined;
@@ -970,6 +1217,14 @@ PicView.prototype.loadImage = function(src) {
   this._ready = false;
   this._view  = undefined;
   this._fullv = undefined;
+  
+  // Reset the drag state
+  this._dragstate.startx = undefined;
+  this._dragstate.starty = undefined;
+  this._dragstate.curx = undefined;
+  this._dragstate.cury = undefined;
+  this._dragstate.curd = undefined;
+  this._dragstate.action = undefined;
   
   // Repaint to blank the canvas
   this._handlePaint();
