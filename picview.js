@@ -938,6 +938,9 @@ PicViewImage.prototype.getHeight = function() {
  * The constructor will register the driver instance as the target for
  * the relevant canvas events.
  * 
+ * Also pass the em-width, for use in distance calculations and for
+ * setting up default values.
+ * 
  * After construction, you can use the public interface of this class to
  * register high-level event handlers and change certain properties that
  * control how the input driver works.
@@ -946,22 +949,37 @@ PicViewImage.prototype.getHeight = function() {
  * 
  *   canvas : HTMLCanvasElement - the <canvas> that this object will
  *   manage input events from
+ * 
+ *   em : number - the em-width
  */
-function PicViewInputDriver(canvas) {
+function PicViewInputDriver(canvas, em) {
   
   var selfref;
   
   // Get self reference for use in callbacks
   selfref = this;
   
-  // Check parameter
+  // Check parameters
   if (!(canvas instanceof HTMLCanvasElement)) {
     throw new TypeError();
+  }
+  if (typeof(em) !== "number") {
+    throw new TypeError();
+  }
+  if (!isFinite(em)) {
+    throw "Em is non-finite!";
+  }
+  if (!(em > 0.0)) {
+    throw "Em must be greater than zero!";
   }
   
   // The _canvas property stores the canvas we received
   //
   this._canvas = canvas;
+  
+  // The _em property stores the em width we received
+  //
+  this._em = em;
   
   // The _active property is an array of two elements; if both elements
   // are undefined, then no pointer is down; if first element defined
@@ -1015,14 +1033,15 @@ function PicViewInputDriver(canvas) {
   // _ppscroll_line and _ppscroll_page are the number of pixels per
   // mouse wheel line scroll and mouse wheel page scroll, respectively
   //
-  this._ppscroll_line = 10;
-  this._ppscroll_page = 50;
+  this._ppscroll_line = this._em * 1.5;
+  this._ppscroll_page = this._ppscroll_line * 5;
   
   // The _dthr property is the SQUARE of the maximum distance that the
   // primary pointer may travel during a drag operation for the drag
   // operation to still possibly generate a hold
   //
-  this._dthr = 100;
+  this._dthr = this._em;
+  this._dthr = this._dthr * this._dthr;
   
   // The _tthr property is the number of milliseconds that the pointer
   // must be down for a hold event to possibly be triggered
@@ -2068,11 +2087,42 @@ function PicView(ce, bgcolor) {
   //
   this._canvas = ce;
   
+  // Get a 2D drawing context and store it in _ctx; for efficiency, we
+  // will tell the browser that the canvas doesn't need an alpha channel
+  // and that we don't plan to read the canvas frequently
+  //
+  this._ctx = this._canvas.getContext('2d', {
+    "alpha": false,
+    "willReadFrequently": false
+  });
+  if (!(this._ctx)) {
+    throw "Failed to get 2D drawing context!";
+  }
+  
+  // Blank the canvas to the background color
+  //
+  this._ctx.fillStyle = "#" + this._bgcolor;
+  this._ctx.fillRect(0, 0, this._canvas.width, this._canvas.height);
+  
+  // Figure out the approximate width of an em
+  //
+  this._em = this._ctx.measureText("M").width;
+  
+  // The _requested flag is true if a paint request has been queued in
+  // the event loop but not run yet
+  //
+  this._requested = false;
+  
+  // When _requested is set, _requested_fast indicates whether the
+  // invoked paint request will use fast-preview mode
+  //
+  this._requested_fast = false;
+  
   // The _ptr property stores the low-level pointer driver, which
   // converts the pointerdown, pointermove, and pointerup events
   // received from the browser into higher-level events
   //
-  this._ptr = new PicViewInputDriver(this._canvas);
+  this._ptr = new PicViewInputDriver(this._canvas, this._em);
   
   this._ptr.handleBegin(function(cx, cy) {
     selfref._inputBegin(cx, cy);
@@ -2114,33 +2164,6 @@ function PicView(ce, bgcolor) {
     selfref._inputScroll(s);
   });
   
-  // Get a 2D drawing context and store it in _ctx; for efficiency, we
-  // will tell the browser that the canvas doesn't need an alpha channel
-  // and that we don't plan to read the canvas frequently
-  //
-  this._ctx = this._canvas.getContext('2d', {
-    "alpha": false,
-    "willReadFrequently": false
-  });
-  if (!(this._ctx)) {
-    throw "Failed to get 2D drawing context!";
-  }
-  
-  // Blank the canvas to the background color
-  //
-  this._ctx.fillStyle = "#" + this._bgcolor;
-  this._ctx.fillRect(0, 0, this._canvas.width, this._canvas.height);
-  
-  // The _requested flag is true if a paint request has been queued in
-  // the event loop but not run yet
-  //
-  this._requested = false;
-  
-  // When _requested is set, _requested_fast indicates whether the
-  // invoked paint request will use fast-preview mode
-  //
-  this._requested_fast = false;
-  
   // The maximum enlargement by zoom.
   // 
   // Must be 1.0 or greater.
@@ -2150,13 +2173,11 @@ function PicView(ce, bgcolor) {
   // 200% with one display pixel equality half an image pixel, and so
   // forth.
   //
-  // @@TODO:
   this._max_enlarge = 4.0;
   
-  // Scaling value for one positive scrolling increment
+  // Scaling value for one scrolling pixel
   //
-  // @@TODO:
-  this._scroll_scale = (1 / 53.0) * 1.5;
+  this._scroll_scale = (1 / (this._em * 6.0)) * 1.5;
   
   // The _view object is a PicViewMap that stores the current view, or
   // is undefined if there is no image loaded
@@ -2203,8 +2224,8 @@ function PicView(ce, bgcolor) {
     "curd": undefined,
     "action": undefined,
     
-    "action_fence": (200*200),
-    "zoom_fence": (50*50)
+    "action_fence": (this._em * 7) * (this._em * 7),
+    "zoom_fence": (this._em * 1.5) * (this._em * 1.5)
   };
   
   // Create a new PicViewImage that will handle loading image bitmaps
@@ -2255,6 +2276,14 @@ function PicView(ce, bgcolor) {
       selfref._canvas.height = window.screen.height;
     }
   };
+  
+  // Add a listener for fullscreen changes on the canvas element which
+  // might be caused by browser or other external requests
+  this._canvas.addEventListener(
+    PicView._fullscreenchange(),
+    function(ev) {
+      selfref._handleScreenChange()
+    });
 }
 
 /*
@@ -2266,6 +2295,9 @@ function PicView(ce, bgcolor) {
  * PicView._FULLSCREEN_ALIAS stores a mapping of standard fullscreen API
  * names to arrays that begin with the standard name and then have any
  * vendor prefix names.
+ * 
+ * Make sure that each array has prefixes in same order.  The function
+ * _fullscreenchange() depends on this.
  */
 PicView._FULLSCREEN_ALIAS = {
   "fullscreenEnabled": [
@@ -2291,6 +2323,12 @@ PicView._FULLSCREEN_ALIAS = {
     "webkitRequestFullscreen",
     "mozRequestFullScreen",
     "msRequestFullscreen"
+  ],
+  "fullscreenchange": [
+    "fullscreenchange",
+    "webkitfullscreenchange",
+    "mozfullscreenchange",
+    "msfullscreenchange"
   ]
 };
 
@@ -2399,6 +2437,25 @@ PicView._requestFullscreen = function(e, options) {
 };
 
 /*
+ * Return the event name to use for the fullscreenchange event.
+ */
+PicView._fullscreenchange = function() {
+  var i, fa;
+  
+  // Check what prefix, if any, is needed for an API function
+  fa = PicView._FULLSCREEN_ALIAS.fullscreenEnabled;
+  for(i = 0; i < fa.length; i++) {
+    if (fa[i] in document) {
+      // Index i in array is what we need to use
+      return PicView._FULLSCREEN_ALIAS.fullscreenchange[i];
+    }
+  }
+  
+  // If we got here, just return the standard name
+  return PicView._FULLSCREEN_ALIAS.fullscreenchange[0];
+};
+
+/*
  * Private instance functions
  * --------------------------
  */
@@ -2492,6 +2549,27 @@ PicView.prototype._requestExitFull = function() {
     // Failed to leave fullscreen
     selfref._fullscreen = "full";
   });
+};
+
+/*
+ * Called when a change of fullscreen state affecting the canvas is
+ * detected.
+ */
+PicView.prototype._handleScreenChange = function() {
+  // We only need to worry about cases where fullscreen is being
+  // canceled
+  if (PicView._fullscreenElement() !== null) {
+    return;
+  }
+  
+  // Canvas is losing fullscreen; we need to do something if canvas is
+  // still in "full" state, indicating it isn't aware yet of the change
+  if (this._fullscreen === "full") {
+    // Restore previous dimensions and update fullscreen state
+    this._canvas.width  = this._priorw;
+    this._canvas.height = this._priorh;
+    this._fullscreen = "out";
+  }
 };
 
 /*
@@ -2962,7 +3040,7 @@ PicView.prototype._inputScroll = function(s) {
   
   // Self-reference for callbacks
   selfref = this;
-  
+
   // Ignore if no image loaded
   if (this._view === undefined) {
     return;
