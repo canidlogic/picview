@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Picview demo</title>
+    <meta name="viewport" 
+      content="width=device-width, initial-scale=1.0"/>
+    <style>
+
+body {
+  max-width: 50em;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+  margin-top: 2.5em;
+  margin-bottom: 5em;
+  font-family: sans-serif;
+  color: black;
+  background-color: whitesmoke;
+  overflow-y: scroll;
+}
+
+h1 {
+  text-align: center;
+}
+
+#divRuler {
+  background-color: silver;
+  margin-top: 1em;
+}
+
+#txtMessage {
+  margin-top: 1em;
+  width: 100%;
+  height: 20em;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+    </style>
+    
+    <!--
+      Include the picview.js module.
+      
+      You can include a defer attribute so that the module will not
+      block document parsing.  The script should still load before the
+      DOMContentLoaded event is fired, so it should still be OK to
+      invoke this module in response to DOMContentLoaded.
+    -->
+    <script src="picview.js"></script>
+    
+    <!--
+      Simple local script that attaches picview.js to the canvas with a
+      desired image URL once the DOMContentLoaded event is fired.
+    -->
+    <script>
+
+// Wrap everything in an anonymous function that we immediately invoke
+// after it is declared -- this prevents anything from being implicitly
+// added to global scope
+(function() {
+  
+  /*
+   * Constants
+   * =========
+   */
+  
+  /*
+   * The ratio of the canvas width to the canvas height.
+   */
+  var CANVAS_ASPECT = 4.0 / 3.0;
+  
+  /*
+   * The background color of the canvas, as a base-16 RRGGBB string.
+   */
+  var CANVAS_BACKGROUND = "0000aa";
+  
+  /*
+   * Public functions
+   * ================
+   */
+  
+  /*
+   * Log a message to the on-screen box.
+   *
+   * Parameters:
+   *
+   *   str : string - the message to log
+   */
+  function logMessage(str) {
+    var e;
+    
+    // Check parameter
+    if (typeof(str) !== "string") {
+      throw new TypeError();
+    }
+    
+    // Get message textbox
+    e = document.getElementById("txtMessage");
+    if (!e) {
+      throw "Can't find message textbox!";
+    }
+    
+    // If more than 4K text, trim down to 4K
+    if (e.value.length > 4096) {
+      e.value = e.value.slice(0, 4096);
+    }
+    
+    // Prefix a line break if not the first text
+    if (e.value.length > 0) {
+      e.value = "\n" + e.value;
+    }
+    
+    // Prefix the message
+    e.value = str + e.value;
+  }
+  
+  /*
+   * Called when the document is loaded.
+   */
+  function handleLoad() {
+    var eCanvas, eRuler, ro, pv;
+    
+    // Get the canvas and ruler DIV
+    eCanvas = document.getElementById("cnvDemo");
+    if (!eCanvas) {
+      throw "Can't find <canvas> element!";
+    }
+    eRuler = document.getElementById("divRuler");
+    if (!eRuler) {
+      throw "Can't find ruler DIV!";
+    }
+    
+    // Set the canvas width to scrolled content width of the ruler, and
+    // adjust the height according to canvas aspect
+    eCanvas.width = eRuler.scrollWidth ;
+    eCanvas.height = eCanvas.width / CANVAS_ASPECT;
+    
+    // Attach PicView instance to the canvas
+    pv = new PicView(eCanvas, CANVAS_BACKGROUND);
+    
+    // Listen to window resize events, and then match the width of the
+    // canvas to the ruler, as well as forcing a repaint; however, do
+    // not do this when any sort of fullscreen operation is happening
+    window.onresize = function(ev) {
+      if (!pv.fullScreenMode()) {
+        eCanvas.width = eRuler.scrollWidth;
+        eCanvas.height = eCanvas.width / CANVAS_ASPECT;
+        pv.forcePaint();
+      }
+    };
+    
+    // @@TODO:
+    pv.loadImage("extra/dogs.jpg");
+    pv.handleSwipe(function(right) {
+      if (right) {
+        logMessage("Swipe right");
+      } else {
+        logMessage("Swipe left");
+      }
+    });
+  }
+  
+  /*
+   * Export declarations
+   * ===================
+   * 
+   * All exports are declared within a global "demo" object.
+   */
+  
+  window.demo = {
+    "logMessage": logMessage,
+    "handleLoad": handleLoad
+  };
+
+}());
+
+// Call into our load handler once DOM is ready
+document.addEventListener('DOMContentLoaded', demo.handleLoad);
+
+    </script>
+  </head>
+  <body>
+    <h1>Picview demo</h1>
+    
+    <!--
+      You must put a <canvas> element somewhere in the document which
+      picview will then control.
+      
+      Do NOT use CSS width and height styling for <canvas> as this may
+      cause rendering distortions
+      
+      <canvas> requires the </canvas> closing tag.
+    -->
+    <canvas id="cnvDemo"></canvas>
+    
+    <!--
+      We have a blank DIV here which contains a non-breaking space to
+      force it to render.
+      
+      We use this to figure out the new width of the canvas when the
+      window is resized, as demonstrated in the <script> section above
+      in this HTML file.
+      
+      For this demo, we have CSS styling of this DIV to make it visible
+      so that you can compare its width to that of the canvas.  In
+      production, you can leave the DIV with an invisible style.
+      
+      CAUTION:
+      If you are using this technique, you should set the overflow-y
+      CSS property of the body to the value "scroll" which will force
+      the vertical scrollbars to always appear.  If you don't do this,
+      the there is a glitch when the window is being resized right next
+      to the threshold when the vertical scrollbars appear, where the
+      old size of the canvas will cause the vertical scrollbars to be
+      in one visibility state but the new size of the canvas will change
+      the visibility of the vertical scrollbars, such that the width of
+      the canvas ends up not matching the width of the ruler after all
+      adjustments are made.
+    -->
+    <div id="divRuler">&nbsp;</div>
+    
+    <textarea readonly id="txtMessage"></textarea>
+    
+  </body>
+</html>
