@@ -128,6 +128,85 @@ window.PicViewConfig = {
 };
 
 /*
+ * PicViewIcon object
+ * ==================
+ * 
+ * This global object defines the parameters that control the appearance
+ * of the toolbar and icons.
+ * 
+ *     iconCount
+ * 
+ * An integer that stores the total number of icons on the toolbar.
+ * 
+ *     emLimit
+ * 
+ * The height of the toolbar is not allowed to exceed this many em
+ * units.  Should be a finite value that is greater than zero.  The
+ * pctLimit is another limit on the height of the toolbar.
+ * 
+ *     pctLimit
+ * 
+ * The height of the toolbar is not allowed to exceed a certain
+ * percentage of the total canvas height.  pctLimit is a value that is
+ * greater than zero and less than or equal to 1.0.  The canvas height
+ * multiplied by pctLimit is the actual limit.  The emLimit is another
+ * limit on the height of the toolbar.
+ * 
+ *     minPixels
+ * 
+ * The computed height of the toolbar must have at least this many
+ * pixels or else it won't be shown.  This should be an integer value
+ * that is zero or greater.  The computed height of the toolbar is the
+ * width of the canvas divided by iconCount, which is then clamped so
+ * that it exceeds neither the height derived from emLimit nor the
+ * height derived from pctLimit.  If this computed height is then at
+ * least minPixels (the computed height is always floored to an
+ * integer), then the toolbar can be shown.
+ * 
+ *     buttonScale
+ * 
+ * The amount of space within a toolbar tray position that is actually
+ * occupied by a button.  This controls how much padding (if any) there
+ * is between buttons.  This value should be greater than zero and less
+ * than or equal to 1.0.  If set to 1.0, the button occupies the entire
+ * tray position.  If set to 0.5, the button has half the width and half
+ * the height of the tray position, and so forth.
+ * 
+ *     iconScale
+ * 
+ * The amount of space within a button that is used to draw the icon.
+ * This controls how much padding (if any) there is around the icon
+ * within each button.  This value should be greater than zero and less
+ * than or equal to 1.0.  If set to 1.0, the icon occupies the entire
+ * button.  If set to 0.5, the icon has half the width and half the
+ * height of the button, and so forth.
+ * 
+ *     fillBack
+ * 
+ * The CSS color value string used as the fillStyle when painting the
+ * background of the toolbar.
+ * 
+ *     fillFace
+ * 
+ * The CSS color value string used as the fillStyle when painting the
+ * face of a toolbar button.
+ * 
+ *     fillIcon
+ * 
+ * The CSS color value string used as the fillStyle when painting all
+ * icons except the close icon.
+ * 
+ *     fillClose
+ * 
+ * The CSS color value string used as the fillStyle when painting the
+ * close icon.
+ * 
+ * @@TODO:
+ */
+
+// @@TODO:
+
+/*
  * PicViewMap class
  * ================
  * 
